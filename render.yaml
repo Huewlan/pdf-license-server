@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: license-server
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: python license_server.py
