@@ -1,13 +1,16 @@
 from flask import Flask, request, jsonify
+import uuid
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 LICENSE_FILE = "licenses.json"
 ADMIN_API_KEY = "AdminHW1"
 
-# === Helpers ===
+
+# === Utility Functions ===
+
 def load_licenses():
     if not os.path.exists(LICENSE_FILE):
         return []
@@ -18,80 +21,98 @@ def save_licenses(data):
     with open(LICENSE_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-def check_admin_auth(request):
-    api_key = request.headers.get("X-API-KEY")
-    return api_key == ADMIN_API_KEY
+def auth_admin(req):
+    return req.headers.get("X-API-KEY") == ADMIN_API_KEY
 
-# === License Validation ===
+
+# === PUBLIC ENDPOINT ===
+
 @app.route("/validate", methods=["POST"])
 def validate_license():
-    data = request.get_json()
+    data = request.json
     license_key = data.get("key")
     machine_id = data.get("machine_id")
 
+    if not license_key or not machine_id:
+        return jsonify({"valid": False, "reason": "missing data"}), 400
+
     licenses = load_licenses()
     for lic in licenses:
         if lic["key"] == license_key:
-            print(f"🔍 Incoming validation request:\n    Key: {license_key}\n    Machine ID: {machine_id}")
-            print(f"🧾 Checking license: {lic}")
-
-            # Expired?
-            if lic["expires"] and datetime.strptime(lic["expires"], "%Y-%m-%d") < datetime.now():
-                return jsonify({"valid": False, "reason": "expired"}), 200
-
-            # First time activation
-            if lic["machine_id"] in [None, "", "placeholder"]:
+            # First time use: bind the machine ID
+            if lic.get("machine_id") is None:
                 lic["machine_id"] = machine_id
                 save_licenses(licenses)
-            elif lic["machine_id"] != machine_id:
-                return jsonify({"valid": False, "reason": "machine mismatch"}), 200
-
+            # Check for machine mismatch
+            elif lic.get("machine_id") != machine_id:
+                return jsonify({"valid": False, "reason": "machine mismatch"}), 403
+            # Check expiration
+            if datetime.strptime(lic["expires"], "%Y-%m-%d") < datetime.now():
+                return jsonify({"valid": False, "reason": "expired"}), 403
             return jsonify({"valid": True}), 200
 
-    return jsonify({"valid": False, "reason": "invalid key"}), 200
+    return jsonify({"valid": False, "reason": "key not found"}), 404
 
-# === Admin: List all licenses ===
-@app.route("/licenses", methods=["GET"])
+
+# === ADMIN ENDPOINTS ===
+
+@app.route("/admin/licenses", methods=["GET"])
 def list_licenses():
-    if not check_admin_auth(request):
-        return jsonify({"error": "Unauthorized"}), 403
+    if not auth_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
     return jsonify(load_licenses()), 200
 
-# === Admin: Activate license (set new expiry date) ===
-@app.route("/licenses/activate", methods=["POST"])
-def activate_license():
-    if not check_admin_auth(request):
-        return jsonify({"error": "Unauthorized"}), 403
-    data = request.get_json()
-    license_key = data.get("key")
-    new_expiry = data.get("new_expiry")
+@app.route("/admin/licenses", methods=["POST"])
+def create_license():
+    if not auth_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    req_data = request.json or {}
+    days_valid = int(req_data.get("valid_days", 30))
+    new_license = {
+        "key": str(uuid.uuid4()),
+        "expires": (datetime.now() + timedelta(days=days_valid)).strftime("%Y-%m-%d"),
+        "machine_id": None
+    }
 
     licenses = load_licenses()
-    for lic in licenses:
-        if lic["key"] == license_key:
-            lic["expires"] = new_expiry
-            save_licenses(licenses)
-            return jsonify({"success": True}), 200
+    licenses.append(new_license)
+    save_licenses(licenses)
 
-    return jsonify({"error": "License not found"}), 404
+    return jsonify(new_license), 201
 
-# === Admin: Deactivate license (expire it) ===
-@app.route("/licenses/deactivate", methods=["POST"])
-def deactivate_license():
-    if not check_admin_auth(request):
-        return jsonify({"error": "Unauthorized"}), 403
-    data = request.get_json()
-    license_key = data.get("key")
+@app.route("/admin/licenses/<key>", methods=["PATCH"])
+def update_license(key):
+    if not auth_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
 
+    req_data = request.json or {}
     licenses = load_licenses()
     for lic in licenses:
-        if lic["key"] == license_key:
-            lic["expires"] = "2000-01-01"
+        if lic["key"] == key:
+            if "expires" in req_data:
+                lic["expires"] = req_data["expires"]
+            if "machine_id" in req_data:
+                lic["machine_id"] = req_data["machine_id"]
             save_licenses(licenses)
-            return jsonify({"success": True}), 200
-
+            return jsonify(lic), 200
     return jsonify({"error": "License not found"}), 404
+
+@app.route("/admin/licenses/<key>", methods=["DELETE"])
+def delete_license(key):
+    if not auth_admin(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    licenses = load_licenses()
+    updated = [lic for lic in licenses if lic["key"] != key]
+    if len(updated) == len(licenses):
+        return jsonify({"error": "License not found"}), 404
+
+    save_licenses(updated)
+    return jsonify({"deleted": key}), 200
+
 
 # === Run Locally ===
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=True)
