@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>License Admin Dashboard</title>
+    <style>
+        body { font-family: Arial; background: #f4f4f4; padding: 20px; color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #3498db; color: white; }
+        input[type=text], input[type=date] { padding: 5px; width: 100%; }
+        form.inline { display: inline; }
+    </style>
+</head>
+<body>
+    <h1>PDF Extract License Admin</h1>
+
+    <form method="get" action="/admin">
+        <input type="hidden" name="api_key" value="{{ api_key }}">
+        <input type="text" name="search" placeholder="Search by key or machine ID">
+        <button type="submit">Search</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>License Key</th>
+            <th>Expires</th>
+            <th>Machine ID</th>
+            <th>Actions</th>
+        </tr>
+        {% for lic in licenses %}
+        <tr>
+            <form method="POST" action="{{ url_for('dashboard.update_license', key=lic.key) }}?api_key={{ api_key }}" class="inline">
+                <td>{{ lic.key }}</td>
+                <td><input type="date" name="expires" value="{{ lic.expires }}"></td>
+                <td><input type="text" name="machine_id" value="{{ lic.machine_id or '' }}"></td>
+                <td><button type="submit">Update</button></td>
+            </form>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

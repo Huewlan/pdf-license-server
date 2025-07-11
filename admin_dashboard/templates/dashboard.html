@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>License Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background-color: #f2f2f2;
+            padding: 20px;
+        }
+        table {
+            width: 100%%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 8px;
+            border: 1px solid #ccc;
+            background: white;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        form.inline {
+            display: inline;
+        }
+    </style>
+</head>
+<body>
+    <h1>License Admin Dashboard</h1>
+
+    <form method="GET" action="{{ url_for('dashboard.dashboard') }}">
+        <input type="hidden" name="api_key" value="{{ api_key }}">
+        <input type="text" name="search" placeholder="Search by license key...">
+        <button type="submit">Search</button>
+    </form>
+
+    <h2>Add License</h2>
+    <form method="POST" action="{{ url_for('dashboard.create_license') }}?api_key={{ api_key }}">
+        Valid Days: <input type="number" name="valid_days" value="30">
+        <button type="submit">Add</button>
+    </form>
+
+    <h2>Licenses</h2>
+    <table>
+        <tr>
+            <th>Key</th>
+            <th>Expires</th>
+            <th>Machine ID</th>
+            <th>Actions</th>
+        </tr>
+        {% for lic in licenses %}
+        <tr>
+            <form method="POST" action="{{ url_for('dashboard.update_license', key=lic['key']) }}?api_key={{ api_key }}">
+                <td>{{ lic['key'] }}</td>
+                <td><input type="text" name="expires" value="{{ lic['expires'] }}"></td>
+                <td><input type="text" name="machine_id" value="{{ lic['machine_id'] }}"></td>
+                <td>
+                    <button type="submit">Update</button>
+            </form>
+            <form method="POST" action="{{ url_for('dashboard.delete_license', key=lic['key']) }}?api_key={{ api_key }}" class="inline">
+                <button type="submit" onclick="return confirm('Delete this license?')">Delete</button>
+            </form>
+                </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
